@@ -1,4 +1,4 @@
 import sys
 import powerswitch
 
-powerswitch.Eps4m("193.50.110.135").on(int(sys.argv[1]))
+powerswitch.Eps4m(ip_address="193.50.110.135").set_on(int(sys.argv[1]))

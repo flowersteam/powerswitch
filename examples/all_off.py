@@ -1,3 +1,3 @@
 import powerswitch
 
-powerswitch.Eps4m("193.50.110.135").all_off()
+powerswitch.Eps4m(ip_address="193.50.110.135").set_all_off()

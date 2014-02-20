@@ -1,1 +1,1 @@
-from powerswitch import Eps4m
+from .powerswitch import Eps4m
