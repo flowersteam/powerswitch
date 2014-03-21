@@ -116,6 +116,21 @@ class Eps4m(object):
         """Puts the given port of the power switch on"""
         self._request(port, '=On')
 
+    def is_on(self, port):
+        """Returns true if given port is on"""
+        self.update_status()
+        return self.status[port] == 0
+
+    def is_off(self, port):
+        """Returns true if given port is off"""
+        self.update_status()
+        return self.status[port] == 1
+
+    def is_restarting(self, port):
+        """Returns true if given port is restarting"""
+        self.update_status()
+        return self.status[port] == 2
+
     def set_off(self, port):
         """Puts the given port of the power switch off"""
         self._request(port, '=Off')
@@ -159,12 +174,12 @@ class Eps4m(object):
         for line in status:
             num_port = int(line[4:5])
             port_sta = line[6:-1]
-            self.status[num_port] = GLOBALSTATUS[port_sta]
+            self.status[num_port - 1] = GLOBALSTATUS[port_sta]
 
     def _request(self, port, action):
         """Performs a request on the given port with the specified action"""
         assert 0 <= port < 4, \
             "port number are from 0 to 3; you asked for port {}".format(port)
-        self.status[port + 1] = GLOBALSTATUS[action[1:]]
+        self.status[port] = GLOBALSTATUS[action[1:]]
         requests.get('http://' + self.addr + HIDDENPAGE_
                     + 'M0:O' + str(port+1) + action)
