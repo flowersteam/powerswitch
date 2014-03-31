@@ -11,6 +11,8 @@ import requests
 import time
 import subprocess
 import threading
+import pickle
+import os
 from threading import Thread
 
 from netaddr import IPNetwork
@@ -40,6 +42,7 @@ def update_function(powerswitch):
 
 def search_on_network(mac_address):
     """Searches for the ip address on the given MAC address"""
+    print("searching device {} on the network".format(mac_address))
     mac_dict = {}
     ifaces = ni.interfaces()
     for iface in ifaces:
@@ -73,23 +76,27 @@ def search_on_network(mac_address):
 
 class Eps4m(object):
     """Class defining a power switch"""
-    def __init__(self, mac_address=None, ip_address=None):
+    def __init__(self, mac_address=None, ip_address=None, config_file=None):
         self.status = {}
         self.lock = threading.Lock()
-        if ip_address == None and mac_address == None:
-            raise ValueError("MAC address and IP are both equals to none.")
-        elif ip_address == None and mac_address != None:
-            self.addr = search_on_network(mac_address)
-        elif ip_address != None and mac_address == None:
-            if test_ip(ip_address):
-                self.addr = ip_address
-            else:
-                raise ValueError("IP address doesn't seem to be a http server.")
+        if config_file != None:
+            self.load(config_file)
         else:
-            if test_ip_mac_address(ip_address, mac_address):
-                self.addr = ip_address
-            else:
+            if ip_address == None and mac_address == None:
+                raise ValueError("MAC address and IP are both equals to none.")
+            elif ip_address == None and mac_address != None:
                 self.addr = search_on_network(mac_address)
+                self.mac_addr = mac_address
+            elif ip_address != None and mac_address == None:
+                if test_ip(ip_address):
+                    self.addr = ip_address
+                else:
+                    raise ValueError("IP address doesn't seem to be a http server.")
+            else:
+                if test_ip_mac_address(ip_address, mac_address):
+                    self.addr = ip_address
+                else:
+                    self.addr = search_on_network(mac_address)
         self.update_status()
         self.updater = Thread(target=update_function, args={self,})
         self.run_updater = True
@@ -99,6 +106,24 @@ class Eps4m(object):
     # def __exit__(self, type, value, traceback):
     #                 self.run_updater = False
     #                 self.updater.join()
+
+    def save(self, file_path):
+        with open(file_path, 'w+') as f:
+            config = {'ip' : self.addr, 'mac' : self.mac_addr}
+            pickle.dump(config, f)
+
+    def load(self, file_path):
+        if not os.path.isfile(file_path):
+            raise IOError("error: file {} not found".format(file_path))
+        with open(file_path, 'r') as f:
+            config = pickle.load(f)
+            self.mac_addr = config['mac']
+            if test_ip(config['ip']):
+                self.addr = config['ip']
+            else:
+                sel.addr = search_on_network(self.addr)
+
+            
 
     def update_status(self):
         """Updates the current status off the power switch"""
