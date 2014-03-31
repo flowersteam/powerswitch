@@ -31,8 +31,11 @@ def test_ip_mac_address(ip_address, mac_address):
 
 def test_ip(ip_address):
     """Tests a http request at the specified ip on port 80"""
-    rep = requests.get('http://' + ip_address + HIDDENPAGE_)
-    return rep.status_code == 200
+    try:
+        rep = requests.get('http://' + ip_address + HIDDENPAGE_)
+        return rep.status_code == 200
+    except:
+        return False;
 
 def update_function(powerswitch):
     """Function called by the thread to update the power switch status"""
@@ -121,7 +124,7 @@ class Eps4m(object):
             if test_ip(config['ip']):
                 self.addr = config['ip']
             else:
-                sel.addr = search_on_network(self.addr)
+                self.addr = search_on_network(self.mac_addr)
 
             
 
