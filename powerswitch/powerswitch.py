@@ -14,13 +14,13 @@ import threading
 import pickle
 import os
 from threading import Thread
-
 from netaddr import IPNetwork
 import netifaces as ni
 
 HIDDENPAGE_ = "/hidden.htm?"
 GLOBALSTATUS = {'On': 0, 'Off' : 1, 'Restart' : 2, 'Rst' : 2}
-DEFAULT_CONF_PATH = "~/.pypowerswitch"
+DEFAULT_CONF_PATH = "~/.powerswitch/"
+CONFIG_FILENAME = "config_"
 
 def test_ip_mac_address(ip_address, mac_address):
     """Tests if real ips MAC address is equals to the given MAC address"""
@@ -42,7 +42,7 @@ def test_ip(ip_address):
     try:
         rep = requests.get('http://' + ip_address + HIDDENPAGE_)
         return rep.status_code == 200
-    except Exception:
+    except requests.ConnectionError:
         return False
 
 def update_function(powerswitch):
@@ -87,70 +87,50 @@ def search_on_network(mac_address):
 
 class Eps4m(object):
     """Class defining a power switch"""
-    def __init__(self, mac_address=None, ip_address=None,
-            load_config=False, config_file=None):
+    def __init__(self, mac_address, load_config=False):
+        if mac_address == None:
+            raise ValueError("You must specify a MAC address for your device")
         self.status = {}
         self.lock = threading.Lock()
-        loaded = False
-        if load_config == True:
-            if config_file == None:
-                loaded = self.load(DEFAULT_CONF_PATH)
-            else:
-                loaded = self.load(config_file)
-        if not loaded:
-            if ip_address == None and mac_address == None:
-                raise ValueError("MAC address and IP are both equals to none.")
-            elif ip_address == None and mac_address != None:
-                self.addr = search_on_network(mac_address)
+        self.addr = None
+        self.mac_addr = None
+        if load_config:
+            self._load(mac_address)
+            if mac_address != self.mac_addr:
                 self.mac_addr = mac_address
-            elif ip_address != None and mac_address == None:
-                if test_ip(ip_address):
-                    self.addr = ip_address
-                    self.mac_addr = get_mac_address(ip_address)
-                else:
-                    raise ValueError("IP doesn't seem to be a http server.")
+                self.addr = search_on_network(mac_address)
             else:
-                if test_ip_mac_address(ip_address, mac_address):
-                    self.addr = ip_address
-                else:
-                    self.addr = search_on_network(mac_address)
+                if not test_ip(self.addr):
+                    self.addr = search_on_network(self.mac_addr)
+            self._save()
+        else:
+            self.addr = search_on_network(mac_address)
+            self.mac_addr = mac_address
         self.update_status()
         self.updater = Thread(target=update_function, args={self,})
         self.run_updater = True
         self.updater.daemon = True
         self.updater.start()
-        if config_file == None:
-            self.save(DEFAULT_CONF_PATH)
-        else:
-            self.save(config_file)
 
-    def save(self, file_path):
+    def _save(self):
         """Saves the current configuration in the given file"""
-        config_filepath = os.path.expanduser(file_path)
+        config_filepath = os.path.expanduser(DEFAULT_CONF_PATH
+            + CONFIG_FILENAME + self.mac_addr.replace(":", "-"))
+        if not os.path.exists(os.path.expanduser(DEFAULT_CONF_PATH)):
+            os.makedirs(os.path.expanduser(DEFAULT_CONF_PATH))
         with open(config_filepath, 'w+') as filepath:
             config = {'ip' : self.addr, 'mac' : self.mac_addr}
             pickle.dump(config, filepath)
 
-    def load(self, file_path):
+    def _load(self, mac_address):
         """Loads the configuration stired in the given file"""
-        config_filepath = os.path.expanduser(file_path)
-        if not os.path.isfile(config_filepath):
-            return False
-        with open(config_filepath, 'r') as filepath:
-            config = pickle.load(filepath)
-            if test_ip(config['ip']):
+        config_filepath = os.path.expanduser(DEFAULT_CONF_PATH
+            + CONFIG_FILENAME + mac_address.replace(":", "-"))
+        if os.path.isfile(config_filepath):
+            with open(config_filepath, 'r') as filepath:
+                config = pickle.load(filepath)
                 self.addr = config['ip']
-                if test_ip_mac_address(self.addr, config['mac']):
-                    self.mac_addr = config['mac']
-                else:
-                    self.mac_addr = get_mac_address(self.addr)
-            else:
                 self.mac_addr = config['mac']
-                try:
-                    self.addr = search_on_network(self.mac_addr)
-                except KeyError:
-                    return False
-        return True
 
     def update_status(self):
         """Updates the current status off the power switch"""
