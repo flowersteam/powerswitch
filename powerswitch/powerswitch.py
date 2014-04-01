@@ -20,6 +20,7 @@ import netifaces as ni
 
 HIDDENPAGE_ = "/hidden.htm?"
 GLOBALSTATUS = {'On': 0, 'Off' : 1, 'Restart' : 2, 'Rst' : 2}
+DEFAULT_CONF_PATH = "~/.pypowerswitch"
 
 def test_ip_mac_address(ip_address, mac_address):
     """Tests if real ips MAC address is equals to the given MAC address"""
@@ -29,13 +30,20 @@ def test_ip_mac_address(ip_address, mac_address):
     mac = ret_lines[2].split(' ')[2].lower()
     return mac == mac_address
 
+def get_mac_address(ip_address):
+    """Get MAC address from ip"""
+    ret = subprocess.Popen(["sudo", "nmap", "-sP", "-n", ip_address],
+                            stdout=subprocess.PIPE).stdout.read()
+    ret_lines = ret.split('\n')[2:-2]
+    return ret_lines[2].split(' ')[2].lower()
+
 def test_ip(ip_address):
     """Tests a http request at the specified ip on port 80"""
     try:
         rep = requests.get('http://' + ip_address + HIDDENPAGE_)
         return rep.status_code == 200
-    except:
-        return False;
+    except Exception:
+        return False
 
 def update_function(powerswitch):
     """Function called by the thread to update the power switch status"""
@@ -45,7 +53,7 @@ def update_function(powerswitch):
 
 def search_on_network(mac_address):
     """Searches for the ip address on the given MAC address"""
-    print("searching device {} on the network".format(mac_address))
+    print "searching device {} on the network".format(mac_address)
     mac_dict = {}
     ifaces = ni.interfaces()
     for iface in ifaces:
@@ -79,12 +87,17 @@ def search_on_network(mac_address):
 
 class Eps4m(object):
     """Class defining a power switch"""
-    def __init__(self, mac_address=None, ip_address=None, config_file=None):
+    def __init__(self, mac_address=None, ip_address=None,
+            load_config=False, config_file=None):
         self.status = {}
         self.lock = threading.Lock()
-        if config_file != None:
-            self.load(config_file)
-        else:
+        loaded = False
+        if load_config == True:
+            if config_file == None:
+                loaded = self.load(DEFAULT_CONF_PATH)
+            else:
+                loaded = self.load(config_file)
+        if not loaded:
             if ip_address == None and mac_address == None:
                 raise ValueError("MAC address and IP are both equals to none.")
             elif ip_address == None and mac_address != None:
@@ -93,8 +106,9 @@ class Eps4m(object):
             elif ip_address != None and mac_address == None:
                 if test_ip(ip_address):
                     self.addr = ip_address
+                    self.mac_addr = get_mac_address(ip_address)
                 else:
-                    raise ValueError("IP address doesn't seem to be a http server.")
+                    raise ValueError("IP doesn't seem to be a http server.")
             else:
                 if test_ip_mac_address(ip_address, mac_address):
                     self.addr = ip_address
@@ -105,28 +119,38 @@ class Eps4m(object):
         self.run_updater = True
         self.updater.daemon = True
         self.updater.start()
-
-    # def __exit__(self, type, value, traceback):
-    #                 self.run_updater = False
-    #                 self.updater.join()
+        if config_file == None:
+            self.save(DEFAULT_CONF_PATH)
+        else:
+            self.save(config_file)
 
     def save(self, file_path):
-        with open(file_path, 'w+') as f:
+        """Saves the current configuration in the given file"""
+        config_filepath = os.path.expanduser(file_path)
+        with open(config_filepath, 'w+') as filepath:
             config = {'ip' : self.addr, 'mac' : self.mac_addr}
-            pickle.dump(config, f)
+            pickle.dump(config, filepath)
 
     def load(self, file_path):
-        if not os.path.isfile(file_path):
-            raise IOError("error: file {} not found".format(file_path))
-        with open(file_path, 'r') as f:
-            config = pickle.load(f)
-            self.mac_addr = config['mac']
+        """Loads the configuration stired in the given file"""
+        config_filepath = os.path.expanduser(file_path)
+        if not os.path.isfile(config_filepath):
+            return False
+        with open(config_filepath, 'r') as filepath:
+            config = pickle.load(filepath)
             if test_ip(config['ip']):
                 self.addr = config['ip']
+                if test_ip_mac_address(self.addr, config['mac']):
+                    self.mac_addr = config['mac']
+                else:
+                    self.mac_addr = get_mac_address(self.addr)
             else:
-                self.addr = search_on_network(self.mac_addr)
-
-            
+                self.mac_addr = config['mac']
+                try:
+                    self.addr = search_on_network(self.mac_addr)
+                except KeyError:
+                    return False
+        return True
 
     def update_status(self):
         """Updates the current status off the power switch"""
