@@ -6,6 +6,7 @@ ePS4M.py
 Created by Paul Fudal on 2014-01-30.
 Copyright (c) 2014 INRIA. All rights reserved.
 """
+from __future__ import print_function
 
 import requests
 import time
@@ -109,7 +110,7 @@ class Eps4m(object):
     def print_status(self):
         """Prints the current status of the power switch"""
         self.lock.acquire()
-        print self.status
+        print(self.status)
         self.lock.release()
 
     def set_on(self, port):
